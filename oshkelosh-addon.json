@@ -1,0 +1,9 @@
+{
+  "addon_id": "gelato",
+  "addon_name": "Gelato",
+  "addon_description": "Global print-on-demand via Gelato API.",
+  "category": "supplier",
+  "version": "1.0.0",
+  "min_oshkelosh_version": "0.1.0",
+  "python_requires": ">=3.11"
+}
