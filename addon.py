@@ -9,9 +9,13 @@ from pydantic import BaseModel, Field, SecretStr
 
 from app.addons.suppliers.base import SupplierAddon
 from app.addons.suppliers.gelato.catalog import normalize_gelato_catalog_products
-from app.addons.suppliers.gelato.client import GelatoAPIError, GelatoClient
+from app.addons.suppliers.gelato.client import (
+    GelatoAPIError,
+    GelatoClient,
+    parse_quote_shipping_options,
+)
 from schemas.supplier import SupplierCatalogProduct
-from app.addons.log import info, warning
+from app.addons.log import exception, info, warning
 from app.addons.config_serialization import dump_addon_config
 
 
@@ -28,20 +32,23 @@ class GelatoConfig(BaseModel):
 
 
 def _map_shipping(address: Dict[str, Any]) -> Dict[str, Any]:
+    from app.addons.suppliers.address import canonical_address
+
+    addr = canonical_address(address)
     payload = {
-        "firstName": address.get("first_name", ""),
-        "lastName": address.get("last_name", ""),
-        "addressLine1": address.get("line1", ""),
-        "city": address.get("city", ""),
-        "postCode": address.get("zip", ""),
-        "country": address.get("country", ""),
-        "email": address.get("email", ""),
-        "phone": address.get("phone", ""),
+        "firstName": addr["first_name"],
+        "lastName": addr["last_name"],
+        "addressLine1": addr["line1"],
+        "city": addr["city"],
+        "postCode": addr["zip"],
+        "country": addr["country_code"],
+        "email": addr["email"],
+        "phone": addr["phone"],
     }
-    if address.get("state"):
-        payload["state"] = address["state"]
-    if address.get("line2"):
-        payload["addressLine2"] = address["line2"]
+    if addr["state"]:
+        payload["state"] = addr["state"]
+    if addr["line2"]:
+        payload["addressLine2"] = addr["line2"]
     return payload
 
 
@@ -139,6 +146,83 @@ class GelatoAddon(SupplierAddon):
                 return row
         return {"error": f"Gelato product '{product_id}' not found"}
 
+    def supports_shipping_quotes(self) -> bool:
+        return True
+
+    async def quote_shipping(
+        self,
+        items: List[Dict[str, Any]],
+        shipping_address: Dict[str, Any],
+        *,
+        currency: str | None = None,
+    ) -> int | None:
+        """Live Gelato rates; prefer standard, else cheapest per quote. None → Site Settings."""
+        details = await self.quote_shipping_details(
+            items, shipping_address, currency=currency
+        )
+        if details is None:
+            return None
+        return int(details["cents"])
+
+    async def quote_shipping_details(
+        self,
+        items: List[Dict[str, Any]],
+        shipping_address: Dict[str, Any],
+        *,
+        selected_id: str | None = None,
+        currency: str | None = None,
+    ) -> Dict[str, Any] | None:
+        """Live Gelato methods (aggregated across facilities); selected_id overrides default."""
+        from app.addons.suppliers.shipping_quote import pick_shipping_option
+
+        client = self._require_client()
+        cfg = self._config or {}
+        try:
+            products = []
+            for idx, item in enumerate(items):
+                product_uid = str(item.get("supplier_product_id") or "").strip()
+                if not product_uid:
+                    continue
+                products.append(
+                    {
+                        "itemReferenceId": f"quote-{idx}",
+                        "productUid": product_uid,
+                        "quantity": int(item.get("quantity") or 1),
+                    }
+                )
+            if not products:
+                return None
+            payload = {
+                "orderReferenceId": "shipping-quote",
+                "customerReferenceId": "shipping-quote",
+                "currency": str(currency or cfg.get("default_currency") or "USD").upper(),
+                "recipient": _map_shipping(shipping_address or {}),
+                "products": products,
+            }
+            data = await client.quote_order(payload)
+            quotes = data.get("quotes") if isinstance(data, dict) else None
+            options = parse_quote_shipping_options(
+                quotes if isinstance(quotes, list) else []
+            )
+            chosen = pick_shipping_option(
+                options,
+                selected_id=selected_id,
+                preferred_ids=("normal", "standard"),
+            )
+            if chosen is None:
+                return None
+            return {
+                "cents": int(chosen["cents"]),
+                "selected_id": str(chosen["id"]),
+                "options": options,
+            }
+        except GelatoAPIError as exc:
+            warning("Gelato", "quote_shipping error: {}", exc)
+            return None
+        except Exception:
+            exception("Gelato", "quote_shipping unexpected error")
+            return None
+
     async def create_order(
         self,
         items: List[Dict[str, Any]],
@@ -146,6 +230,8 @@ class GelatoAddon(SupplierAddon):
         *,
         external_id: str | None = None,
         supplier_ref: str | None = None,
+        shipping_method: str | None = None,
+        currency: str | None = None,
     ) -> Dict[str, Any]:
         del supplier_ref
         client = self._require_client()
@@ -171,11 +257,11 @@ class GelatoAddon(SupplierAddon):
                 "orderType": "order" if auto_submit else "draft",
                 "orderReferenceId": external_id or "oshkelosh",
                 "customerReferenceId": external_id or "oshkelosh",
-                "currency": str(cfg.get("default_currency") or "USD").upper(),
+                "currency": str(currency or cfg.get("default_currency") or "USD").upper(),
                 "items": order_items,
                 "shippingAddress": _map_shipping(shipping_address),
             }
-            ship_method = str(cfg.get("shipment_method_uid") or "").strip()
+            ship_method = (shipping_method or cfg.get("shipment_method_uid") or "").strip()
             if ship_method:
                 payload["shipmentMethodUid"] = ship_method
 

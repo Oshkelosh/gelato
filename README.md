@@ -50,6 +50,7 @@ Multiple suppliers can be enabled at the same time. Fulfillment runs when an ord
 
 - **Variant supplier fields:** paid-order fulfillment reads Gelato IDs from each **ProductVariant** row
 - **Fulfillment:** creates Gelato order; respects `auto_submit` for draft vs submitted
+- **Checkout shipping:** core calls `quote_shipping()` → `POST /v4/orders:quote` for Gelato line items (prefers a normal/standard method, else cheapest; sums per fulfillment facility). Unquoted or failed quotes fall back to Site Settings like any other supplier.
 - **Grouping:** line items grouped by fulfillment key `gelato`
 
 ## Variant supplier fields
