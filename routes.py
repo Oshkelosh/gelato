@@ -12,6 +12,8 @@ def _parse_form(form: Any) -> tuple[dict[str, Any], bool]:
         "auto_submit": form.get("auto_submit") == "on",
         "default_currency": (form.get("default_currency") or "USD").upper()[:3],
         "shipment_method_uid": form.get("shipment_method_uid", ""),
+        "branded_insert_product_uid": (form.get("branded_insert_product_uid") or "").strip(),
+        "branded_label_product_uid": (form.get("branded_label_product_uid") or "").strip(),
     }, form.get("is_active") == "on"
 
 

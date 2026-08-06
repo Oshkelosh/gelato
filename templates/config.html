@@ -50,6 +50,23 @@
             </label>
         </div>
 
+        <h3 style="margin-top:1.5em;">Branded packaging (Gelato+)</h3>
+        <p style="color:var(--clr-text-muted);font-size:14px;margin-bottom:12px;">
+            Optional insert and label product UIDs from your Gelato branding catalog.
+            At most one of each is added per order. Shared gift-message text is not mapped
+            (Gelato needs a print file for personalized inserts).
+        </p>
+        <div class="form-group">
+            <label for="branded_insert_product_uid">Branded insert productUid</label>
+            <input type="text" id="branded_insert_product_uid" name="branded_insert_product_uid"
+                   value="{{ config.get('branded_insert_product_uid', '') }}" />
+        </div>
+        <div class="form-group">
+            <label for="branded_label_product_uid">Branded label productUid</label>
+            <input type="text" id="branded_label_product_uid" name="branded_label_product_uid"
+                   value="{{ config.get('branded_label_product_uid', '') }}" />
+        </div>
+
         <div class="form-actions">
             <button type="submit" class="btn btn--primary">Save Configuration</button>
         </div>

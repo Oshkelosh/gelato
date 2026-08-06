@@ -25,6 +25,14 @@ class GelatoConfig(BaseModel):
     auto_submit: bool = Field(default=True, description="Submit orders (vs draft)")
     default_currency: str = Field(default="USD", min_length=3, max_length=3)
     shipment_method_uid: str = Field(default="", description="Optional default shipping method")
+    branded_insert_product_uid: str = Field(
+        default="",
+        description="Optional Gelato insert productUid (max one per order)",
+    )
+    branded_label_product_uid: str = Field(
+        default="",
+        description="Optional Gelato branded label productUid (max one per order)",
+    )
 
     @classmethod
     def config_model(cls):
@@ -232,8 +240,10 @@ class GelatoAddon(SupplierAddon):
         supplier_ref: str | None = None,
         shipping_method: str | None = None,
         currency: str | None = None,
+        gift_message: str | None = None,
+        packing_slip: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
-        del supplier_ref
+        del supplier_ref, gift_message, packing_slip
         client = self._require_client()
         cfg = self._config or {}
         try:
@@ -251,6 +261,25 @@ class GelatoAddon(SupplierAddon):
                 )
             if not order_items:
                 return {"success": False, "error": "No valid Gelato line items"}
+
+            insert_uid = str(cfg.get("branded_insert_product_uid") or "").strip()
+            if insert_uid:
+                order_items.append(
+                    {
+                        "itemReferenceId": f"{external_id or 'osh'}-insert",
+                        "productUid": insert_uid,
+                        "quantity": 1,
+                    }
+                )
+            label_uid = str(cfg.get("branded_label_product_uid") or "").strip()
+            if label_uid:
+                order_items.append(
+                    {
+                        "itemReferenceId": f"{external_id or 'osh'}-label",
+                        "productUid": label_uid,
+                        "quantity": 1,
+                    }
+                )
 
             auto_submit = bool(cfg.get("auto_submit", True))
             payload: Dict[str, Any] = {
