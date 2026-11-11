@@ -1,7 +1,10 @@
 """Unit tests for Gelato catalog normalization."""
 
 from app.addons.suppliers.gelato.addon import GelatoAddon
-from app.addons.suppliers.gelato.catalog import normalize_gelato_catalog
+from app.addons.suppliers.gelato.catalog import (
+    normalize_gelato_catalog,
+    normalize_gelato_catalog_products,
+)
 
 
 def test_gelato_normalizes_product_uid():
@@ -9,6 +12,21 @@ def test_gelato_normalizes_product_uid():
     assert len(items) == 1
     assert items[0].external_key == "gelato:uid-1"
     assert items[0].price_cents == 1999
+
+
+def test_gelato_products_fill_image_alts():
+    products = normalize_gelato_catalog_products(
+        [
+            {
+                "productUid": "uid-1",
+                "name": "Tee",
+                "price": "19.99",
+                "imageUrl": "https://cdn.example/tee.jpg",
+            }
+        ]
+    )
+    assert products[0].image_urls == []
+    assert products[0].variants[0].image_alt_texts == ["Tee"]
 
 
 def test_gelato_addon_identity():
